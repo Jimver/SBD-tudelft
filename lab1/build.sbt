@@ -1,4 +1,4 @@
-name := "Spark Scala Application template"
+name := "Lab 1"
 
 version := "1.0"
 
