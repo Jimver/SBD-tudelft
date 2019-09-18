@@ -18,4 +18,6 @@ project/plugins/project/
 spark-events
 .bash_history
 
-newfile/
+export_rdd/
+
+.idea/
