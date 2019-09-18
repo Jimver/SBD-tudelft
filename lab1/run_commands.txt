@@ -1,2 +1,4 @@
+sbt package
+
 spark-submit --class "RDD" target/scala-2.11/lab-1_2.11-1.0.jar
 spark-submit --class "Dataset" target/scala-2.11/lab-1_2.11-1.0.jar

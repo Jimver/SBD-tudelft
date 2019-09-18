@@ -17,3 +17,5 @@ project/plugins/project/
 .cache
 spark-events
 .bash_history
+
+newfile/
