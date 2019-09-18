@@ -35,9 +35,16 @@ object RDD {
     // Read the lines
     val lines = source.getLines.toArray
     source.close()
-    lines.foreach(println)
-    // Each entry in csv_names is now a filepath to a csv file
-    val csv_names = lines
+    // Each entry in csv_names is now a (local) filepath to a csv file
+    val csv_names = lines.map(s => {
+      // Match only on local path so docker is also compatible
+      val pattern = "data/segment.*".r
+      pattern.findFirstIn(s) match {
+        case Some(x) => x
+        case None => println("Cannot match: " + s)
+      }
+    })
+    csv_names.foreach(println)
 
     // Create the Spark session
     val spark = SparkSession
