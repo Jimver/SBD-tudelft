@@ -81,10 +81,14 @@ object RDD {
       val ld = LocalDateTime.parse(s(1), DateUtility.datetime_format).toLocalDate
       // Parse the allnames string to a list of "Name,Int" strings
       val namesAndCount = s(23).split(";")
-      // Only take the "Name" from each "Name,Int" string,
-      // then take the distinct words to prevent double counting the same topic int the same article
-      val names = namesAndCount.map(d => d.split(",")(0)).distinct
-      (ld, names)
+      // Only take the "Name" from each "Name,Int" string
+      val names = namesAndCount.map(d => d.split(",")(0))
+      // Take the distinct words to prevent double counting the same topic int the same article.
+      // The reason distinct is done in scala instead of spark's distinct() is because there aren't that many
+      // names per GKG record (around 10-20), therefore it is faster to just do this operation in scala
+      // than flattening out each individual name as a separate record and calling distinct() on them.
+      val uniqueNames = names.distinct
+      (ld, uniqueNames)
     })
 
     // Flatten the names so there is a row for each date, name combination

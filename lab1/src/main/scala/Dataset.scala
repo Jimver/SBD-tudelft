@@ -88,11 +88,13 @@ case class DateAndNameCount(
                              Count: Long
                            )
 
+// Case class for Name and count
 case class NameCountPair(
                           topic: String,
                           count: Long
                         )
 
+// Case class for date and list of NameCountPairs
 case class DateAndNameCountPairs(
                                   data: Date,
                                   result: List[NameCountPair]
@@ -150,6 +152,7 @@ object Dataset {
     })
     csv_names.foreach(println)
 
+    // Initialize spark
     val spark = SparkSession
       .builder
       .appName("Spark Scala Application template")
@@ -164,7 +167,7 @@ object Dataset {
     // Import implicits
     import sqlContext.implicits._
 
-    // Read csv files into single dataframe
+    // Read csv files into a single Dataset
     val df = spark.read
       .format("csv")
       .option("delimiter", "\t")
@@ -197,8 +200,13 @@ object Dataset {
 
     // Get unique allnames
     val dateAndNames = dates.map(record => {
+      // Parse the allnames string to a list of "Name,Int" strings
       val namesAndIndex = record.AllNames.split(";")
+      // Only take the "Name" from each "Name,Int" string
       val names = namesAndIndex.map(_.split(",")(0))
+      // The reason distinct is done in scala instead of spark is because there aren't that many
+      // names per GKG record (around 10-20), therefore it is faster to just do this operation in scala
+      // than flattening out each individual name as a separate record.
       val uniqueNames = names.distinct
       DateAndNames(record.DATE, uniqueNames)
     })
@@ -206,25 +214,25 @@ object Dataset {
     // Flatten date and names to (date, name) pairs
     val dateAndName = dateAndNames.flatMap(r => r.Names.map(n => DateAndName(r.DATE, n)))
 
-    // Filter names based on Type `ParentCategory` because it is an invalid topic
+    // Remove names that are `Type ParentCategory` because it is an invalid topic
     val filteredDateAndName = dateAndName.filter(_.Name != "Type ParentCategory")
 
-    // Group by date and name
+    // Group by (date, name)
     val dateAndNameKeys = filteredDateAndName.groupByKey(r => (r.DATE, r.Name))
 
-    // Count the keys
+    // Count the size of the values of the keys (so how many times (date, name) occurs)
     val countedDateAndNameKeys = dateAndNameKeys.count()
 
-    // Flatten the key value into two columns
+    // Flatten the key value (date, string) into two columns with the third being the count
     val flattened = countedDateAndNameKeys.map(p => DateAndNameCount(p._1._1, p._1._2, p._2))
 
-    // Sort on Count descending
+    // Sort on count descending
     val sorted = flattened.sort($"Count".desc)
 
     // Group by date alone
     val groupByDate = sorted.groupByKey(_.DATE)
 
-    // Convert the KeyValueGroupedDataSet to a (date, list) Dataset
+    // Convert the KeyValueGroupedDataSet to a normal (date, List[(name, count)]) Dataset
     val mapToList = groupByDate.mapGroups((key, group) => (key, group.map(d => NameCountPair(d.Name, d.Count)).toList))
 
     // Get the 10 highest topics from each date
@@ -237,7 +245,7 @@ object Dataset {
     // Export final dataset to disk
     topTenEachDate.write.mode(SaveMode.Overwrite).json("export_dataset")
 
-    // Show result in console
+    // Show result
     topTenEachDate.show(truncate = false)
 
     spark.stop()
