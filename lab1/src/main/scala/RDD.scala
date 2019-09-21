@@ -14,15 +14,15 @@ object DateUtility {
 
 // Helper utility to print data in Spark
 object PrintUtility {
-  def print(data: String) = {
+  def print(data: String): Unit = {
     println(data)
   }
 
-  def print(data: Int) = {
+  def print(data: Int): Unit = {
     println(data + "")
   }
 
-  def print(data: Long) = {
+  def print(data: Long): Unit = {
     println(data + "")
   }
 }
@@ -81,35 +81,42 @@ object RDD {
       val ld = LocalDateTime.parse(s(1), DateUtility.datetime_format).toLocalDate
       // Parse the allnames string to a list of "Name,Int" strings
       val namesAndCount = s(23).split(";")
-      // Only take the "Name" from each "Name,Int" string
-      val names = namesAndCount.map(d => d.split(",")(0))
+      // Only take the "Name" from each "Name,Int" string,
+      // then take the distinct words to prevent double counting the same topic int the same article
+      val names = namesAndCount.map(d => d.split(",")(0)).distinct
       (ld, names)
     })
 
+    // Flatten the names so there is a row for each date, name combination
+    val flattened = dateAndNames.flatMap(r => r._2.map(n => (r._1, n)))
+
+    // Filter out the topic `Type ParentCategory` because it is not a valid topic
+    val filterInvalidTopic = flattened.filter(_._2 != "Type ParentCategory")
+
+    // Group by date and name
+    val groupByDateAndName = filterInvalidTopic.groupBy(r => (r._1, r._2))
+
+    // Count the same (date, name) tuples
+    val countNames = groupByDateAndName.map(p => (p._1._1, p._1._2, p._2.size))
+
+    // Sort the (date,name,count) rows descending on count
+    val sorted = countNames.sortBy(_._3, ascending = false)
+
     // Group by date
-    val groupByDate = dateAndNames.groupByKey()
+    val groupByDate = sorted.groupBy(_._1)
 
-    // Flatten the allnames that were combined from the group by action
-    val flattened = groupByDate.map(x => {
-      val words = x._2.flatten
-      (x._1, words)
-    })
-
-    // Count the allnames and filter out the `Type ParentCategory` topic because it is not an actual topic
-    val counted = flattened.map(x => {
-      // Count the names
-      val counters = x._2.groupBy(l => l).map(t => (t._1, t._2.size)).toList
-      // Filter on `Type ParentCategory` and take the 10 highest occurring allnames
-      val sorted = counters.filter(_._1 != "Type ParentCategory").sortWith((a, b) => a._2 > b._2).take(10)
-      (x._1, sorted)
-    })
+    // Take the top then names for each date
+    val topTenNames = groupByDate.map(r => (r._1, r._2.map(n => (n._2, n._3)).take(10)))
 
     // Remove the export directory if it exists
     val directory = new Directory(new File("export_rdd"))
     directory.deleteRecursively()
 
     // Export final RDD to disk
-    counted.coalesce(1).saveAsTextFile("export_rdd")
+    topTenNames.coalesce(1).saveAsTextFile("export_rdd")
+
+    // Print the results
+    topTenNames.collect().foreach(r => PrintUtility.print(r._1.toString + ": " + r._2.mkString(",")))
 
     spark.stop()
     // ---- Spark unavailable from here ----

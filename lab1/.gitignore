@@ -14,10 +14,9 @@ project/plugins/project/
 # Docker container cache
 .sbt
 .ivy2
-.cache
 spark-events
 .bash_history
 
 export_rdd/
-
+export_dataset/
 .idea/
