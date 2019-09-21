@@ -1,9 +1,8 @@
 import java.io.File
 import java.sql.{Date, Timestamp}
 
-import org.apache.spark.sql.{SaveMode, SparkSession, types}
 import org.apache.spark.sql.types.{StructField, _}
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{SaveMode, SparkSession}
 
 import scala.io.Source
 import scala.reflect.io.Directory
@@ -78,26 +77,26 @@ case class DateAndNames(
 
 // Case class for date and name
 case class DateAndName(
-                     DATE: Date,
-                     Name: String
-                     )
+                        DATE: Date,
+                        Name: String
+                      )
 
 // Case class for date and name and count
 case class DateAndNameCount(
-                        DATE: Date,
-                        Name: String,
-                        Count: Long
-                      )
+                             DATE: Date,
+                             Name: String,
+                             Count: Long
+                           )
 
 case class NameCountPair(
-                       topic: String,
-                       count: Long
-                       )
+                          topic: String,
+                          count: Long
+                        )
 
 case class DateAndNameCountPairs(
-                               data: Date,
-                               result: List[NameCountPair]
-                               )
+                                  data: Date,
+                                  result: List[NameCountPair]
+                                )
 
 object Dataset {
   def main(args: Array[String]) {
