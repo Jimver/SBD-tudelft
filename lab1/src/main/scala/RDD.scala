@@ -31,7 +31,7 @@ object PrintUtility {
 object RDD {
   def main(args: Array[String]) {
     // Get local index file
-    val local_index_file = "data/local_index_150.txt"
+    val local_index_file = "data/local_index.txt"
     val source = Source.fromFile(local_index_file)
     // Read the lines
     val lines = source.getLines.toArray
