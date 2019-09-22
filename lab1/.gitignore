@@ -20,3 +20,6 @@ spark-events
 export_rdd/
 export_dataset/
 .idea/
+
+data/local_index*.txt
+data/segment

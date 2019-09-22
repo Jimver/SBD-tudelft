@@ -11,7 +11,7 @@ import scala.reflect.io.Directory
 case class GKGRecord(
                       GKGRECORDID: String,
                       DATE: Timestamp,
-                      SourceCollectionIdentifier: Long,
+                      SourceCollectionIdentifier: Option[Long],
                       SourceCommonName: String,
                       DocumentIdentifier: String,
                       Counts: String,
@@ -42,7 +42,7 @@ case class GKGRecord(
 case class GKGRecordDate(
                           GKGRECORDID: String,
                           DATE: Date,
-                          SourceCollectionIdentifier: Long,
+                          SourceCollectionIdentifier: Option[Long],
                           SourceCommonName: String,
                           DocumentIdentifier: String,
                           Counts: String,
@@ -136,7 +136,7 @@ object Dataset {
     )
 
     // Get local index file
-    val local_index_file = "data/local_index.txt"
+    val local_index_file = "data/local_index_150.txt"
     val source = Source.fromFile(local_index_file)
     // Read the lines
     val lines = source.getLines.toArray
@@ -161,11 +161,20 @@ object Dataset {
 
     // ---- Spark available from here ----
 
+    // Get the spark context from the spark session
+    val sc = spark.sparkContext
+
+    // Set LOG level to ERROR
+    sc.setLogLevel("ERROR")
+
     // Get the Spark SQL context
     val sqlContext = spark.sqlContext
 
     // Import implicits
     import sqlContext.implicits._
+
+    // Start time
+    val start = System.currentTimeMillis()
 
     // Read csv files into a single Dataset
     val df = spark.read
@@ -178,16 +187,16 @@ object Dataset {
       .as[GKGRecord]
 
     // Count total records
-    val total = df.count()
-    PrintUtility.print("Total: " + total)
+//    val total = df.count()
+//    PrintUtility.print("Total: " + total)
 
     // Filter on valid data with non null Allnames and date
     val filtered = df.filter(record => record.AllNames != null && record.DATE != null)
 
     // Count good records
-    val good = filtered.count()
-    PrintUtility.print("Good: " + good)
-    PrintUtility.print("Invalid: " + (total - good))
+//    val good = filtered.count()
+//    PrintUtility.print("Good: " + good)
+//    PrintUtility.print("Invalid: " + (total - good))
 
     // Convert datetime to date
     val dates = filtered.map(r => {
@@ -238,15 +247,30 @@ object Dataset {
     // Get the 10 highest topics from each date
     val topTenEachDate = mapToList.map(d => DateAndNameCountPairs(d._1, d._2.take(10)))
 
+    // Sort by date ascending
+    val sortByDate = topTenEachDate.sort($"data".asc)
+
+    // Final Dataset
+    val finalDataset = sortByDate.coalesce(1)
+
+    // Collect the results
+    val collected = finalDataset.collect()
+
+    // End time
+    val end = System.currentTimeMillis()
+
+    // Print time taken
+    PrintUtility.print("Time taken: " + (end - start)/1000.0f + "")
+
     // Remove the export directory if it exists
     val directory = new Directory(new File("export_dataset"))
     directory.deleteRecursively()
 
     // Export final dataset to disk
-    topTenEachDate.write.mode(SaveMode.Overwrite).json("export_dataset")
+    finalDataset.write.mode(SaveMode.Overwrite).json("export_dataset")
 
     // Show result
-    topTenEachDate.show(truncate = false)
+    finalDataset.show(truncate = false)
 
     spark.stop()
     // ---- Spark unavailable from here ----

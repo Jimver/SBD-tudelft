@@ -1,5 +1,6 @@
 import java.io.File
-import java.time.LocalDateTime
+import java.time.chrono.ChronoLocalDate
+import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
 
 import org.apache.spark.sql.SparkSession
@@ -30,7 +31,7 @@ object PrintUtility {
 object RDD {
   def main(args: Array[String]) {
     // Get local index file
-    val local_index_file = "data/local_index.txt"
+    val local_index_file = "data/local_index_150.txt"
     val source = Source.fromFile(local_index_file)
     // Read the lines
     val lines = source.getLines.toArray
@@ -52,10 +53,17 @@ object RDD {
       .appName("Spark Scala Application template")
       .config("spark.master", "local")
       .getOrCreate()
+
+    // ---- Spark available from here ----
+
     // Get the spark context from the spark session
     val sc = spark.sparkContext
 
-    // ---- Spark available from here ----
+    // Set LOG level to ERROR
+    sc.setLogLevel("ERROR")
+
+    // Start time
+    val start = System.currentTimeMillis()
 
     // Read all csv files in the local_index file
     val rdd = sc.textFile(csv_names.mkString(","))
@@ -64,16 +72,16 @@ object RDD {
     val split = rdd.map((s: String) => s.split("\t"))
 
     // Get the total amount of entries and print it
-    val c = split.count()
-    PrintUtility.print("Total: " + c)
+//    val c = split.count()
+//    PrintUtility.print("Total: " + c)
 
     // Filter on entries with more than or equal to 24 columns for bad data filtering
     val filtered = split.filter(x => x.length >= 24)
-    val good = filtered.count()
 
     // Print out the good/invalid entry count
-    PrintUtility.print("Good: " + good)
-    PrintUtility.print("Invalid: " + (c - good))
+//    val good = filtered.count()
+//    PrintUtility.print("Good: " + good)
+//    PrintUtility.print("Invalid: " + (c - good))
 
     // Extract the date and allnames columns at index 1 and 23 respectively
     val dateAndNames = filtered.map(s => {
@@ -112,15 +120,33 @@ object RDD {
     // Take the top then names for each date
     val topTenNames = groupByDate.map(r => (r._1, r._2.map(n => (n._2, n._3)).take(10)))
 
+    // Performant date ordering comparator: https://stackoverflow.com/a/50395814
+    implicit val localDateOrdering: Ordering[LocalDate] =
+      Ordering.by(identity[ChronoLocalDate])
+    // Sort by date ascending
+    val sortByDate = topTenNames.sortBy(r => r._1, ascending = true)
+
+    // Final RDD
+    val finalRDD = topTenNames.coalesce(1)
+
+    // Collect the results
+    val collected = finalRDD.collect()
+
+    // End time
+    val end = System.currentTimeMillis()
+
+    // Print time taken
+    PrintUtility.print("Time taken: " + (end - start)/1000.0f + "")
+
     // Remove the export directory if it exists
     val directory = new Directory(new File("export_rdd"))
     directory.deleteRecursively()
 
     // Export final RDD to disk
-    topTenNames.coalesce(1).saveAsTextFile("export_rdd")
+    finalRDD.saveAsTextFile("export_rdd")
 
     // Print the results
-    topTenNames.collect().foreach(r => PrintUtility.print(r._1.toString + ": " + r._2.mkString(",")))
+    collected.foreach(r => PrintUtility.print(r._1.toString + ": " + r._2.mkString(",")))
 
     spark.stop()
     // ---- Spark unavailable from here ----
