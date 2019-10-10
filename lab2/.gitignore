@@ -1,0 +1,25 @@
+# Simple Build Tool
+# http://www.scala-sbt.org/release/docs/Getting-Started/Directories.html#configuring-version-control
+
+dist/*
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+.history
+.cache
+.lib/
+
+# Docker container cache
+.sbt
+.ivy2
+spark-events
+.bash_history
+
+export_rdd/
+export_dataset/
+.idea/
+
+data/local_index*.txt
+data/segment

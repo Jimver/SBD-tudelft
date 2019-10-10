@@ -1,0 +1,10 @@
+s3://gdelt-open-data/v2/gkg/20150218230000.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150218231500.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150218233000.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150218234500.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150219000000.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150219001500.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150219003000.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150219004500.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150219010000.gkg.csv
+s3://gdelt-open-data/v2/gkg/20150219011500.gkg.csv
