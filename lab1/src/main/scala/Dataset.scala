@@ -136,7 +136,7 @@ object Dataset {
     )
 
     // Get local index file
-    val local_index_file = "data/local_index.txt"
+    val local_index_file = "data/local_index_10.txt"
     val source = Source.fromFile(local_index_file)
     // Read the lines
     val lines = source.getLines.toArray
@@ -235,17 +235,26 @@ object Dataset {
     // Flatten the key value (date, string) into two columns with the third being the count
     val flattened = countedDateAndNameKeys.map(p => DateAndNameCount(p._1._1, p._1._2, p._2))
 
-    // Sort on count descending
-    val sorted = flattened.sort($"Count".desc)
-
     // Group by date alone
-    val groupByDate = sorted.groupByKey(_.DATE)
+    val groupByDate = flattened.groupByKey(_.DATE)
 
     // Convert the KeyValueGroupedDataSet to a normal (date, List[(name, count)]) Dataset
     val mapToList = groupByDate.mapGroups((key, group) => (key, group.map(d => NameCountPair(d.Name, d.Count)).toList))
 
+    // Function for taking getting N largest elements
+    def topNBy[A, B : Ordering](xs: Iterable[A], n: Int, f: A => B): List[A] = {
+      val q = new scala.collection.mutable.PriorityQueue[A]()(Ordering.by(f).reverse)
+      for (x <- xs) {
+        q += x
+        if (q.size > n) {
+          q.dequeue()
+        }
+      }
+      q.dequeueAll.toList.reverse
+    }
+
     // Get the 10 highest topics from each date
-    val topTenEachDate = mapToList.map(d => DateAndNameCountPairs(d._1, d._2.take(10)))
+    val topTenEachDate = mapToList.map(d => DateAndNameCountPairs(d._1, topNBy(d._2, 10, (e: NameCountPair) => e.count)))
 
     // Sort by date ascending
     val sortByDate = topTenEachDate.sort($"data".asc)
@@ -267,7 +276,7 @@ object Dataset {
     directory.deleteRecursively()
 
     // Export final dataset to disk
-    finalDataset.write.mode(SaveMode.Overwrite).json("export_dataset")
+//    finalDataset.write.mode(SaveMode.Overwrite).json("export_dataset")
 
     // Show result
     finalDataset.show(truncate = false)

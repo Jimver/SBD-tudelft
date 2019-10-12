@@ -150,7 +150,7 @@ object Dataset {
     //        case None => ""
     //      }
     //    })
-    lines.foreach(println)
+//    lines.foreach(println)
 
     // Initialize spark
     val spark = SparkSession
@@ -183,7 +183,8 @@ object Dataset {
       .option("header", "false")
       .schema(schema)
       .option("timestampFormat", "yyyyMMddHHmmss")
-      .load(lines: _*)
+//      .load(lines: _*)
+      .load("s3://gdelt-open-data/v2/gkg/*")
       .as[GKGRecord]
 
     // Count total records
@@ -235,17 +236,26 @@ object Dataset {
     // Flatten the key value (date, string) into two columns with the third being the count
     val flattened = countedDateAndNameKeys.map(p => DateAndNameCount(p._1._1, p._1._2, p._2))
 
-    // Sort on count descending
-    val sorted = flattened.sort($"Count".desc)
-
     // Group by date alone
-    val groupByDate = sorted.groupByKey(_.DATE)
+    val groupByDate = flattened.groupByKey(_.DATE)
 
     // Convert the KeyValueGroupedDataSet to a normal (date, List[(name, count)]) Dataset
     val mapToList = groupByDate.mapGroups((key, group) => (key, group.map(d => NameCountPair(d.Name, d.Count)).toList))
 
+    // Function for taking getting N largest elements
+    def topNBy[A, B : Ordering](xs: Iterable[A], n: Int, f: A => B): List[A] = {
+      val q = new scala.collection.mutable.PriorityQueue[A]()(Ordering.by(f).reverse)
+      for (x <- xs) {
+        q += x
+        if (q.size > n) {
+          q.dequeue()
+        }
+      }
+      q.dequeueAll.toList.reverse
+    }
+
     // Get the 10 highest topics from each date
-    val topTenEachDate = mapToList.map(d => DateAndNameCountPairs(d._1, d._2.take(10)))
+    val topTenEachDate = mapToList.map(d => DateAndNameCountPairs(d._1, topNBy(d._2, 10, (e: NameCountPair) => e.count)))
 
     // Sort by date ascending
     val sortByDate = topTenEachDate.sort($"data".asc)
