@@ -272,11 +272,11 @@ object Dataset {
     PrintUtility.print("Time taken: " + (end - start)/1000.0f + "")
 
     // Remove the export directory if it exists
-    val directory = new Directory(new File("export_dataset"))
-    directory.deleteRecursively()
+//    val directory = new Directory(new File("export_dataset"))
+//    directory.deleteRecursively()
 
     // Export final dataset to disk
-//    finalDataset.write.mode(SaveMode.Overwrite).json("export_dataset")
+    finalDataset.write.mode(SaveMode.Overwrite).json("s3://group39-sbd/export_dataset")
 
     // Show result
     finalDataset.show(truncate = false)

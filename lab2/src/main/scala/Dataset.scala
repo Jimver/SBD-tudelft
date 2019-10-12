@@ -187,10 +187,6 @@ object Dataset {
       .load("s3://gdelt-open-data/v2/gkg/*")
       .as[GKGRecord]
 
-    // Count total records
-    //    val total = df.count()
-    //    PrintUtility.print("Total: " + total)
-
     // Filter on valid data with non null Allnames and date
     val filtered = df.filter(record => record.AllNames != null && record.DATE != null)
 
@@ -263,24 +259,14 @@ object Dataset {
     // Final Dataset
     val finalDataset = sortByDate.coalesce(1)
 
-    // Collect the results
-    val collected = finalDataset.collect()
-
     // End time
     val end = System.currentTimeMillis()
 
     // Print time taken
     println("Time taken: " + (end - start)/1000.0f + "")
 
-    // Remove the export directory if it exists
-//    val directory = new Directory(new File("export_dataset"))
-//    directory.deleteRecursively()
-
-    // Export final dataset to disk
-//    finalDataset.write.mode(SaveMode.Overwrite).json("export_dataset")
-
-    // Show result
-    finalDataset.show(truncate = false)
+    // Export final dataset to S3
+    finalDataset.write.mode(SaveMode.Overwrite).json("s3://group39-sbd/export_dataset")
 
     spark.stop()
     // ---- Spark unavailable from here ----
