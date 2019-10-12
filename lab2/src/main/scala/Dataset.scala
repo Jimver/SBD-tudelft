@@ -280,7 +280,7 @@ object Dataset {
 //    finalDataset.write.mode(SaveMode.Overwrite).json("export_dataset")
 
     // Show result
-//    finalDataset.show(truncate = false)
+    finalDataset.show(truncate = false)
 
     spark.stop()
     // ---- Spark unavailable from here ----
