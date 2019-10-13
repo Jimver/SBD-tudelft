@@ -1,23 +1,28 @@
 [
   {
-    "Classification": "spark-defaults",
-    "Properties": {
+    "classification": "spark-defaults",
+    "properties": {
+      "spark.executor.memory": "50G",
+      "spark.driver.memory": "50G",
+      "spark.driver.cores": "36",
       "spark.default.parallelism": "1152",
-      "spark.driver.memory": "47G",
-      "spark.executor.memory": "47G",
-      "spark.executor.cores": "32",
-      "spark.driver.cores": "32",
-      "spark.executor.instances": "18",
-      "spark.dynamicAllocation.enabled": "false",
+      "spark.executor.cores": "36",
       "spark.executor.extraJavaOptions": "-XX:+UseG1GC -XX:+UnlockDiagnosticVMOptions -XX:+G1SummarizeConcMark -XX:InitiatingHeapOccupancyPercent=35 -verbose:gc -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:OnOutOfMemoryError='kill -9 %p'",
+      "spark.executor.instances": "10",
+      "spark.yarn.executor.memoryOverhead": "5G",
+      "spark.dynamicAllocation.enabled": "false",
       "spark.driver.extraJavaOptions": "-XX:+UseG1GC -XX:+UnlockDiagnosticVMOptions -XX:+G1SummarizeConcMark -XX:InitiatingHeapOccupancyPercent=35 -verbose:gc -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:OnOutOfMemoryError='kill -9 %p'"
-    }
+    },
+    "configurations": []
   },
   {
-    "Classification": "yarn-site",
-    "Properties": {
-      "yarn.nodemanager.vmem-check-enabled": "false",
-      "yarn.nodemanager.pmem-check-enabled": "false"
-    }
+    "classification": "yarn-site",
+    "properties": {
+      "yarn.nodemanager.resource.memory-mb": "59000",
+      "yarn.nodemanager.pmem-check-enabled": "false",
+      "yarn.scheduler.maximum-allocation-mb": "59000",
+      "yarn.nodemanager.vmem-check-enabled": "false"
+    },
+    "configurations": []
   }
 ]
