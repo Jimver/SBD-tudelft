@@ -63,15 +63,16 @@ object GDELTStream extends App {
     }, "inmemory-dates") // Apply histogram transformer
   transformed.to("gdelt-histogram") // Send to next kafka topic)
 
+  // Print stream to file
+//  val fileout = Printed
+//    .toFile[String, Long]("output")
+//    .withLabel("gdeltStream")
+//  transformed.print(fileout)
   // Print the stream for debugging
-  val fileout = Printed
-    .toFile[String, Long]("output")
-    .withLabel("gdeltStream")
-  transformed.print(fileout)
-  val sysout = Printed
-    .toSysOut[String, Long]
-    .withLabel("gdeltStream")
-  transformed.print(sysout)
+//  val sysout = Printed
+//    .toSysOut[String, Long]
+//    .withLabel("gdeltStream")
+//  transformed.print(sysout)
 
   val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
   streams.cleanUp()
@@ -129,10 +130,8 @@ class HistogramTransformer extends Transformer[String, String, KeyValue[String, 
   def updateStateStore(name: String): Unit = {
     // Get date strings
     val timestamps = this.state_store.get(name)
-    //    println("Update 1: " + timestamps)
     // Return if empty
     if (timestamps == null || timestamps.isEmpty) return
-    //    println("Update 2: " + timestamps)
     // Convert string of datetimes to array of datetimes
     val split = timestamps.split(',')
     // Convert date strings to localdatetime objects
@@ -149,7 +148,6 @@ class HistogramTransformer extends Transformer[String, String, KeyValue[String, 
   def addToStateStore(name: String, date: String) = {
     val old = this.state_store.get(name)
     val all_string = if (old == null || old.isEmpty()) date else old + "," + date
-    //    println("Adding: " + name + ", " + date + ", " + all_string)
     this.state_store.put(name, all_string)
   }
 
@@ -164,14 +162,13 @@ class HistogramTransformer extends Transformer[String, String, KeyValue[String, 
   def olderThanAnHour(timestamp: LocalDateTime): Boolean = {
     val older = LocalDateTime.now().minusHours(1).isAfter(timestamp)
     if (older) {
-      println("Older than an hour: " + timestamp.format(datetime_format))
+//      println("Older than an hour: " + timestamp.format(datetime_format))
     }
     older
   }
 
   // Should return the current count of the name during the _last_ hour
   def transform(key: String, name: String): KeyValue[String, Long] = {
-    //    println("Transform: " + name)
     // Prune old records
     updateStateStore(name)
     // Get date from key
