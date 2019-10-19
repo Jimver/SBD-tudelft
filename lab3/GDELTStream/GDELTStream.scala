@@ -1,16 +1,106 @@
 package lab3
 
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
-import org.apache.kafka.streams.kstream.{Transformer}
+import org.apache.kafka.streams.Topology
+import org.apache.kafka.streams.KeyValue
+import org.apache.kafka.streams.kstream.{Printed, Transformer, TransformerSupplier}
 import org.apache.kafka.streams.processor._
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala._
 import org.apache.kafka.streams.scala.kstream._
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
+import org.apache.kafka.streams.state.KeyValueStore
+import org.apache.kafka.streams.state.StoreBuilder
+import org.apache.kafka.streams.state.Stores
+import org.apache.kafka.streams.processor.PunctuationType
 
 import scala.collection.JavaConversions._
+
+// This transformer should count the number of times a name occurs
+// during the last hour. This means it needs to be able to
+//  1. Add a new record to the histogram and initialize its count;
+//  2. Change the count for a record if it occurs again; and
+//  3. Decrement the count of a record an hour later.
+// You should implement the Histogram using a StateStore (see manual)
+class HistogramTransformer extends Transformer[String, String, KeyValue[String, Long]] {
+  // Fields
+  var context: ProcessorContext = _
+  var state_store: KeyValueStore[String, String] = _
+  // Date time formatter for parsing
+  val datetime_format: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+  // How often to prune old entries in state store
+  val poll_ms = 500
+
+  // Initialize Transformer object
+  def init(context: ProcessorContext) {
+    this.context = context
+    this.state_store = context.getStateStore("inmemory-dates").asInstanceOf[KeyValueStore[String, String]]
+    // schedule a punctuate() method every "poll_ms" (wall clock time)
+    //    this.context.schedule(this.poll_ms, PunctuationType.WALL_CLOCK_TIME, (timestamp) => pruneOldEntries)
+  }
+
+  // Removes all old entries in the state store
+  def pruneOldEntries() = {
+    val pairs = this.state_store.all()
+    pairs.foreach(p => updateStateStore(p.value))
+  }
+
+  // Update the state store for a given name
+  def updateStateStore(name: String): Unit = {
+    // Get date strings
+    val timestamps = this.state_store.get(name)
+    println("Update: " + timestamps)
+    // Return if empty
+    if (timestamps == null || timestamps.isEmpty) return
+    // Convert string of datetimes to array of datetimes
+    val split = timestamps.split(',')
+    // Convert date strings to localdatetime objects
+    val parsed = split.map(s => LocalDateTime.parse(s))
+    // Keep only the datetimes that are more recent than one hour ago
+    val filtered = parsed.filter(ldt => LocalDateTime.now().minusHours(1).isBefore(ldt))
+    // Convert datetimes to single string again
+    val single_string = filtered.map(ldt => ldt.format(datetime_format)).mkString(",")
+    // Update the state store
+    this.state_store.put(name, single_string)
+  }
+
+  // Add date to state store for a given name
+  def addToStateStore(name: String, date: String) = {
+    println("Adding: " + name + ", " + date)
+    val old = this.state_store.get(name)
+    val all_string = if (old == null || old.isEmpty()) "" else old
+    val updated = old + "," + date
+    this.state_store.put(name, updated)
+  }
+
+  // Get the count from the state store for a given name
+  def getCountFromStateStore(name: String): Long = {
+    val all_string = this.state_store.get(name)
+    val count = all_string.split(',').length
+    count
+  }
+
+  // Should return the current count of the name during the _last_ hour
+  def transform(key: String, name: String): KeyValue[String, Long] = {
+    println("Transform: " + name)
+    // Prune old records
+    updateStateStore(name)
+    // Get date from key
+    val dateTime = LocalDateTime.parse(key.split('-')(0), datetime_format)
+    // Put into statestore
+    addToStateStore(name, dateTime.format(datetime_format))
+    // Get count of name
+    val count = getCountFromStateStore(name)
+    (name, count)
+  }
+
+  // Close any resources if any
+  def close() {}
+}
 
 object GDELTStream extends App {
   import Serdes._
@@ -22,12 +112,42 @@ object GDELTStream extends App {
     p
   }
 
+  // Using a `KeyValueStoreBuilder` to build a `KeyValueStore`.// Using a `KeyValueStoreBuilder` to build a `KeyValueStore`.
+  val countStoreSupplier: StoreBuilder[KeyValueStore[String, String]] =
+    Stores.keyValueStoreBuilder(
+      Stores.inMemoryKeyValueStore("inmemory-dates"),
+      Serdes.String,
+      Serdes.String)
+  val countStore: KeyValueStore[String, String] = countStoreSupplier.build
+
   val builder: StreamsBuilder = new StreamsBuilder
+  builder.addStateStore(countStoreSupplier)
 
   // Filter this stream to a stream of (key, name). This is similar to Lab 1,
   // only without dates! After this apply the HistogramTransformer. Finally,
   // write the result to a new topic called gdelt-histogram.
   val records: KStream[String, String] = builder.stream[String, String]("gdelt")
+
+  // Map the input data to output stream
+  val filtered = records
+    .mapValues(v => v.split("\t")) // Separate on tabs
+    .filter((k, arr) => arr.length >= 24) // Filter on records with 24 or more fields
+    .mapValues(v => v(23)) // Get allnames field at index 23
+    .mapValues(v => v.split(";")) // Extract names,index pairs
+    .mapValues(v => v.map(s => {
+      val lastIndex = if (s.lastIndexOf(',') >= 0) s.lastIndexOf(',') else s.length
+      s.substring(0, lastIndex)
+    })) // Extract only names from names,index pairs
+    .flatMapValues(arr => arr) // Flatmap values so we can apply the transform on it
+    .transform(new TransformerSupplier[String, String, KeyValue[String, Long]] {
+      override def get(): Transformer[String, String, KeyValue[String, Long]] = new HistogramTransformer()
+    }, "inmemory-dates")
+
+  // Debugging
+  val sysout = Printed
+    .toSysOut[String, Long]
+    .withLabel("gdeltStream")
+  filtered.print(sysout)
 
   val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
   streams.cleanUp()
@@ -38,27 +158,4 @@ object GDELTStream extends App {
     streams.close(10, TimeUnit.SECONDS)
   }
 
-}
-
-// This transformer should count the number of times a name occurs
-// during the last hour. This means it needs to be able to
-//  1. Add a new record to the histogram and initialize its count;
-//  2. Change the count for a record if it occurs again; and
-//  3. Decrement the count of a record an hour later.
-// You should implement the Histogram using a StateStore (see manual)
-class HistogramTransformer extends Transformer[String, String, (String, Long)] {
-  var context: ProcessorContext = _
-
-  // Initialize Transformer object
-  def init(context: ProcessorContext) {
-    this.context = context
-  }
-
-  // Should return the current count of the name during the _last_ hour
-  def transform(key: String, name: String): (String, Long) = {
-    ("Donald Trump", 1L)
-  }
-
-  // Close any resources if any
-  def close() {}
 }
