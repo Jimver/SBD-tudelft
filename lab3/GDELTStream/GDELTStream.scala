@@ -1,10 +1,12 @@
 package lab3
 
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.time.temporal.{ChronoUnit, TemporalAmount}
 import java.util.Properties
 import java.util.concurrent.TimeUnit
+import java.util.{Date, TimeZone}
 
+import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.KeyValue
 import org.apache.kafka.streams.kstream.{Printed, Transformer, TransformerSupplier}
@@ -22,6 +24,7 @@ import scala.collection.JavaConversions._
 
 object GDELTStream extends App {
   import Serdes._
+
 
   val props: Properties = {
     val p = new Properties()
@@ -80,7 +83,6 @@ object GDELTStream extends App {
 
   sys.ShutdownHookThread {
     println("Closing streams.")
-    streams.cleanUp()
     streams.close(10, TimeUnit.SECONDS)
   }
 
@@ -97,12 +99,13 @@ class HistogramTransformer extends Transformer[String, String, KeyValue[String, 
   var context: ProcessorContext = _
   var state_store: KeyValueStore[String, String] = _
   // Date time formatter for parsing
-  val datetime_format: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+  val df: SimpleDateFormat = new SimpleDateFormat("yyyyMMddHHmmss")
   // How often to prune old entries in state store
-  val poll_ms = 1000 * 60
+  val poll_ms = 1000 * 5
 
   // Initialize Transformer object
   def init(context: ProcessorContext) {
+    this.df.setTimeZone(TimeZone.getTimeZone("UTC"))
     this.context = context
     this.state_store = context.getStateStore("inmemory-dates").asInstanceOf[KeyValueStore[String, String]]
     // schedule a punctuate() method every "poll_ms" (wall clock time)
@@ -118,30 +121,44 @@ class HistogramTransformer extends Transformer[String, String, KeyValue[String, 
     val pairs = this.state_store.all()
     pairs.foreach(p => {
       // Update state store for key
-      updateStateStore(p.key)
+      val changed = updateStateStore(p.key)
       // If the value is null or empty delete the key from state store
-      val v = this.state_store.get(p.value)
-      if (v == null || v.isEmpty())
+      val v = this.state_store.get(p.key)
+      // If value is null or empty, remove it and send (name, 0)
+      if (v == null || v.isEmpty()) {
         this.state_store.delete(p.key)
+        this.context.forward(p.key, 0L)
+        this.context.commit()
+//        println("removed by scheduler: (" + p.key + ", 0)")
+      }
+      // If value is changed, send (name, count)
+      else if (changed) {
+        val count = getCountFromStateStore(p.key)
+        this.context.forward(p.key, count)
+        this.context.commit()
+//        println("change by scheduler: (" + p.key + ", " + count + ")")
+      }
     })
   }
 
-  // Update the state store for a given name
-  def updateStateStore(name: String): Unit = {
+  // Update the state store for a given name, returns true if a change is made, false otherwise
+  def updateStateStore(name: String): Boolean = {
     // Get date strings
     val timestamps = this.state_store.get(name)
-    // Return if empty
-    if (timestamps == null || timestamps.isEmpty) return
+    // Return false if empty
+    if (timestamps == null || timestamps.isEmpty) return false
     // Convert string of datetimes to array of datetimes
     val split = timestamps.split(',')
     // Convert date strings to localdatetime objects
-    val parsed = split.map(s => LocalDateTime.parse(s, datetime_format))
+    val parsed = split.map(s => df.parse(s))
     // Keep only the datetimes that are more recent than one hour ago
     val filtered = parsed.filter(ldt => !olderThanAnHour(ldt))
     // Convert datetimes to single string again
-    val single_string = filtered.map(ldt => ldt.format(datetime_format)).mkString(",")
+    val single_string = filtered.map(ldt => df.format(ldt)).mkString(",")
     // Update the state store
     this.state_store.put(name, single_string)
+    // Return true if if change is made, false otherwise
+    return !single_string.equals(timestamps)
   }
 
   // Add date to state store for a given name
@@ -159,10 +176,11 @@ class HistogramTransformer extends Transformer[String, String, KeyValue[String, 
   }
 
   // Returns true if the timestamp is older than an hour ago, false otherwise
-  def olderThanAnHour(timestamp: LocalDateTime): Boolean = {
-    val older = LocalDateTime.now().minusHours(1).isAfter(timestamp)
+  def olderThanAnHour(timestamp: Date): Boolean = {
+    val now = new Date()
+    val older = now.toInstant.minus(60, ChronoUnit.MINUTES).isAfter(timestamp.toInstant)
     if (older) {
-//      println("Older than an hour: " + timestamp.format(datetime_format))
+//      println("Older than an hour: " + df.format(timestamp))
     }
     older
   }
@@ -172,11 +190,11 @@ class HistogramTransformer extends Transformer[String, String, KeyValue[String, 
     // Prune old records
     updateStateStore(name)
     // Get date from key
-    val dateTime = LocalDateTime.parse(key.split('-')(0), datetime_format)
+    val dateTime = df.parse(key.split('-')(0))
     // If the dateTime is not older than an hour
     if (!olderThanAnHour(dateTime)) {
       // Put into statestore
-      addToStateStore(name, dateTime.format(datetime_format))
+      addToStateStore(name, df.format(dateTime))
     }
     // Get count of name
     val count = getCountFromStateStore(name)
